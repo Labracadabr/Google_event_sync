@@ -1,10 +1,12 @@
 from datetime import date, datetime
 import json
+from pathlib import Path
 
 from gcsa.event import Event
 from gcsa.google_calendar import GoogleCalendar
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from sheet_ import read_sheet, source_spreadsheet
 from config import config
@@ -12,6 +14,12 @@ from config import config
 
 app = FastAPI()
 calendar = GoogleCalendar(default_calendar=config.calendar_id, credentials_path="credentials.json")
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
+
+@app.get("/")
+def root():
+    return FileResponse("flakes.html")
 
 
 @app.post("/sync_calendar")
@@ -20,6 +28,11 @@ def sync_calendar() -> JSONResponse:
         # прочитать таблицу
         data = read_sheet(spreadsheet=source_spreadsheet, page='СВЕЖИЕ РЕЛИЗЫ')
         print(f'{len(data) = }')
+
+        # прочитать существующие события в календаре
+        existing: set[tuple] = set()
+        for event in calendar.get_events(time_min=date(2025, 1, 1)):
+            existing.add(tuple([event.start, event.summary]))
 
         added: list[str] = []
         bad_date: list[str] = []
@@ -34,12 +47,17 @@ def sync_calendar() -> JSONResponse:
 
             # преобразовать
             try:
-                event_date = datetime.strptime(event_date_str, '%d.%m.%Y').date()
+                event_date = datetime.strptime(event_date_str.strip(), '%d.%m.%Y').date()
             except Exception as e:
                 print(f'date error: {event_date_str = }, {e = }')
                 bad_date.append(event_date_str)
                 continue
             event_description = f'{nickname} - {release}'
+
+            # проверить, нет ли уже в календаре этого события
+            if tuple([event_date, event_description]) in existing:
+                continue
+            existing.add(tuple([event_date, event_description]))
 
             # внести в календарь
             event = Event(event_description, start=event_date, location='auto')
