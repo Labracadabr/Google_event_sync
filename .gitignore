@@ -1,0 +1,11 @@
+/shelf/
+/workspace.xml
+.idea
+.env
+*.json
+*.tsv
+*.csv
+*.docx
+*.png
+*.pickle
+*.txt
