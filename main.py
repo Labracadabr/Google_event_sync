@@ -7,6 +7,7 @@ from gcsa.google_calendar import GoogleCalendar
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from sheet_ import read_sheet, source_spreadsheet
 from config import config
@@ -16,14 +17,20 @@ app = FastAPI()
 calendar = GoogleCalendar(default_calendar=config.calendar_id, credentials_path="credentials.json")
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
+class Request(BaseModel):
+    email: str
 
 @app.get("/")
 def root():
     return FileResponse("flakes.html")
 
+@app.get("/static/favicon.ico")
+def root():
+    return FileResponse("/static/favicon.ico")
+
 
 @app.post("/sync_calendar")
-def sync_calendar() -> JSONResponse:
+def sync_calendar(request: Request) -> JSONResponse:
     try:
         # прочитать таблицу
         data = read_sheet(spreadsheet=source_spreadsheet, page='СВЕЖИЕ РЕЛИЗЫ')
@@ -39,18 +46,18 @@ def sync_calendar() -> JSONResponse:
 
         for row in data:
             # искомые поля
-            event_date_str, nickname, release = row.get('Дата релиза'), row.get('Никнеймы'), row.get('Название релиза')
+            date_str, nickname, release = row.get('Дата релиза'), row.get('Никнеймы'), row.get('Название релиза')
 
             # пропустить строки без данных
-            if not (event_date_str and nickname and release):
+            if not (date_str and nickname and release):
                 continue
 
             # преобразовать
             try:
-                event_date = datetime.strptime(event_date_str.strip(), '%d.%m.%Y').date()
+                event_date = datetime.strptime(date_str.strip(), '%d.%m.%Y').date()
             except Exception as e:
-                print(f'date error: {event_date_str = }, {e = }')
-                bad_date.append(event_date_str)
+                print(f'date error: {date_str = }, {e = }')
+                bad_date.append(date_str)
                 continue
             event_description = f'{nickname} - {release}'
 
@@ -75,6 +82,11 @@ def sync_calendar() -> JSONResponse:
         if bad_date:
             bad_str = "\n".join([f"{i}. {repr(d)}"for i, d in enumerate(bad_date, start=1)])
             message += '\n\nНе распознана дата:\n' + bad_str
+
+        # logs
+        log = f"{datetime.now()}\t{request.email}\t{message}"
+        with open("event_log.tsv", "a") as f:
+            print(log, file=f)
 
         return JSONResponse({"status": "success", "message": message})
 

@@ -1,0 +1,6 @@
+﻿environs
+gspread
+tenacity
+gcsa
+fastapi
+pydantic

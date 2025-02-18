@@ -2,9 +2,17 @@
 function triggerPythonScript() {
 
     var url = "https://dollarsnow.org/sync_calendar";
+    var userEmail = Session.getActiveUser().getEmail();
+
     try {
+        var payload = {
+            "email": userEmail
+        };
+
         var response = UrlFetchApp.fetch(url, {
             "method": "post",
+            "contentType": "application/json",
+            "payload": JSON.stringify(payload),
             "muteHttpExceptions": true
         });
 
