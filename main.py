@@ -10,11 +10,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from sheet_ import read_sheet, source_spreadsheet
-from config import config
+from calendar_ import get_google_calendar
 
 
 app = FastAPI()
-calendar = GoogleCalendar(default_calendar=config.calendar_id, credentials_path="credentials.json")
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 class Request(BaseModel):
@@ -32,6 +31,8 @@ def root():
 @app.post("/sync_calendar")
 def sync_calendar(request: Request) -> JSONResponse:
     try:
+        calendar = get_google_calendar()
+
         # прочитать таблицу
         data = read_sheet(spreadsheet=source_spreadsheet, page='СВЕЖИЕ РЕЛИЗЫ')
         print(f'{len(data) = }')
@@ -82,17 +83,20 @@ def sync_calendar(request: Request) -> JSONResponse:
         if bad_date:
             bad_str = "\n".join([f"{i}. {repr(d)}"for i, d in enumerate(bad_date, start=1)])
             message += '\n\nНе распознана дата:\n' + bad_str
-
-        # logs
-        log = f"{datetime.now()}\t{request.email}\t{message}"
-        with open("event_log.tsv", "a") as f:
-            print(log, file=f)
-
-        return JSONResponse({"status": "success", "message": message})
+        status = 'success'
 
     except Exception as e:
         print(e)
-        return JSONResponse({"status": "error", "message": str(e)})
+        status = "error"
+        message = str(e)
+
+    # logs
+    log = f"{datetime.now()}\t{request.email}\t{message}"
+    with open("event_log.tsv", "a") as f:
+        print(log, file=f)
+
+    return JSONResponse({"status": status, "message": message})
+
 
 
 if __name__ == "__main__":
